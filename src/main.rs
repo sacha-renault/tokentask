@@ -1,10 +1,8 @@
-mod token_fetch;
+mod api_connector;
 
 use std::{thread, time::Duration};
 
-use token_fetch::ConnectionHandler;
-
-use crate::token_fetch::Handlers;
+use api_connector::{ConnectionHandler, FetchStrategy};
 
 #[derive(Debug, Clone, Default)]
 pub enum States {
@@ -22,7 +20,7 @@ pub enum Actions {
 
 struct MyHandler;
 
-impl Handlers for MyHandler {
+impl FetchStrategy for MyHandler {
     type Config = ();
     type States = States;
     type Actions = Actions;
@@ -68,5 +66,8 @@ fn main() {
     let a = ConnectionHandler::<MyHandler>::new(());
 
     let token = a.get_token();
+    println!("Token: {token:?}");
     thread::sleep(Duration::from_secs_f32(1.5));
+    let token = a.get_token();
+    println!("Token: {token:?}");
 }
