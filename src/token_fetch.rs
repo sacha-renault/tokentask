@@ -38,7 +38,7 @@ impl<T> BackgroundTokenFetch<T>
 where
     T: Handlers,
 {
-    pub fn init_task(config: T::Config) -> (Arc<Self>, JoinHandle<()>) {
+    pub fn new_job(config: T::Config) -> (Arc<Self>, JoinHandle<()>) {
         // initialize the struct
         let (sender, receiver) = mpsc::channel();
         let token_changed = AtomicBool::new(false);
@@ -58,33 +58,33 @@ where
         (fetcher, handle)
     }
 
-    pub fn exit(self: &Arc<Self>) {
+    pub fn exit(&self) {
         let _ = self.sender.send(());
     }
 
-    pub fn background_job(self: Arc<Self>, receiver: mpsc::Receiver<()>) {
+    pub fn background_job(&self, receiver: mpsc::Receiver<()>) {
         let mut previous_state = T::States::default();
         let mut current_state = T::States::default();
 
         loop {
-            match receiver.recv_timeout(Duration::from_millis(100)) {
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    let action = T::choose_action(&previous_state, &current_state);
-                    previous_state = current_state;
-                    current_state = T::execute(&self.config, action);
+            if let Err(mpsc::RecvTimeoutError::Timeout) =
+                receiver.recv_timeout(Duration::from_millis(100))
+            {
+                let action = T::choose_action(&previous_state, &current_state);
+                previous_state = current_state;
+                current_state = T::execute(&self.config, action);
+                self.maybe_set_token(&current_state);
+            } else {
+                break;
+            }
+        }
+    }
 
-                    if let Some(token) = T::get_token_from_state(&current_state) {
-                        if let Ok(mut guard) = self.token_value.lock() {
-                            *guard = Some(token.to_string());
-                            self.token_changed.store(true, Ordering::Release);
-
-                            // TODO remove this line
-                            println!("Token changed : {}", token);
-                        }
-                    }
-                }
-                // Both Ok(()) and Err::Disconnect means we have to exit
-                _ => break,
+    pub fn maybe_set_token(&self, state: &T::States) {
+        if let Some(token) = T::get_token_from_state(state) {
+            if let Ok(mut guard) = self.token_value.lock() {
+                *guard = Some(token.to_string());
+                self.token_changed.store(true, Ordering::Release);
             }
         }
     }
@@ -112,7 +112,7 @@ where
     T: Handlers,
 {
     pub fn new(config: T::Config) -> Self {
-        let (inner, thread_handle) = BackgroundTokenFetch::init_task(config);
+        let (inner, thread_handle) = BackgroundTokenFetch::new_job(config);
         let last_token_value = RefCell::new(None);
 
         Self {

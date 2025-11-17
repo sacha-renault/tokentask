@@ -66,5 +66,7 @@ impl Handlers for MyHandler {
 
 fn main() {
     let a = ConnectionHandler::<MyHandler>::new(());
+
+    let token = a.get_token();
     thread::sleep(Duration::from_secs_f32(1.5));
 }
