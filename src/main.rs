@@ -1,4 +1,6 @@
 mod api_connector;
+mod oauth;
+mod utils;
 
 use std::{thread, time::Duration};
 
@@ -25,14 +27,6 @@ impl FetchStrategy for MyHandler {
     type States = States;
     type Actions = Actions;
 
-    fn connect(config: &Self::Config) -> Self::States {
-        unreachable!()
-    }
-
-    fn refresh(config: &Self::Config) -> Self::States {
-        unreachable!()
-    }
-
     fn execute(config: &Self::Config, action: Self::Actions) -> Self::States {
         match action {
             Actions::Connect => {
@@ -46,7 +40,11 @@ impl FetchStrategy for MyHandler {
         }
     }
 
-    fn choose_action(prev: &Self::States, current: &Self::States) -> Self::Actions {
+    fn get_wait_duration(state: &Self::States) -> Duration {
+        Duration::from_secs(5)
+    }
+
+    fn choose_action(current: &Self::States) -> Self::Actions {
         match current {
             States::Init => Actions::Connect,
             States::Connected(_) => Actions::Refresh,

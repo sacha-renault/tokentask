@@ -10,16 +10,6 @@ pub trait FetchStrategy: Send + Sync + 'static {
     /// Actions that trigger state transitions (e.g., `Connect`, `Refresh`, `Reconnect`)
     type Actions;
 
-    /// Establish initial connection - called when state is Init
-    ///
-    /// Example: Make OAuth request, return `Connected(access_token)`
-    fn connect(config: &Self::Config) -> Self::States;
-
-    /// Refresh existing connection - called when token needs renewal
-    ///
-    /// Example: Use refresh token to get new access token
-    fn refresh(config: &Self::Config) -> Self::States;
-
     /// Execute an action and return the new state
     ///
     /// Example: `Actions::Connect => Self::connect(config)`
