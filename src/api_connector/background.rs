@@ -48,17 +48,15 @@ where
     }
 
     pub fn background_job(&self, receiver: mpsc::Receiver<()>) {
-        let mut previous_state = T::States::default();
-        let mut current_state = T::States::default();
+        let mut state = T::States::default();
+        let mut wait_duration;
 
         loop {
-            if let Err(mpsc::RecvTimeoutError::Timeout) =
-                receiver.recv_timeout(Duration::from_millis(100))
-            {
-                let action = T::choose_action(&previous_state, &current_state);
-                previous_state = current_state;
-                current_state = T::execute(&self.config, action);
-                self.maybe_set_token(&current_state);
+            wait_duration = T::get_wait_duration(&state);
+            if let Err(mpsc::RecvTimeoutError::Timeout) = receiver.recv_timeout(wait_duration) {
+                let action = T::choose_action(&state);
+                state = T::execute(&self.config, action);
+                self.maybe_set_token(&state);
             } else {
                 break;
             }

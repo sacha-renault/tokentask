@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 pub trait FetchStrategy: Send + Sync + 'static {
     /// Configuration needed to connect/refresh (e.g., client_id, endpoints, credentials)
     type Config: Send + Sync + 'static;
@@ -26,10 +28,12 @@ pub trait FetchStrategy: Send + Sync + 'static {
     /// Decide which action to take based on state transition
     ///
     /// Example: `(_, Init) => Actions::Connect`, `(_, Connected(_)) => Actions::Refresh`
-    fn choose_action(previous_state: &Self::States, current_state: &Self::States) -> Self::Actions;
+    fn choose_action(state: &Self::States) -> Self::Actions;
 
     /// Extract the token from a state, if available
     ///
     /// Example: `Connected(token) => Some(token)`, `_ => None`
     fn get_token_from_state(state: &Self::States) -> Option<&str>;
+
+    fn get_wait_duration(state: &Self::States) -> Duration;
 }
