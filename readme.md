@@ -1,21 +1,28 @@
-mod token_fetch;
+# tokenfetch
 
-use std::{thread, time::Duration};
+Background token refresh without the boilerplate.
 
-use token_fetch::ConnectionHandler;
+## What is this?
 
-use crate::token_fetch::Handlers;
+You know when you need to keep refreshing OAuth tokens, API keys, or database connections in the background? And you end up writing the same threading + state machine code every time?
 
-#[derive(Debug, Clone, Default)]
-pub enum States {
+This handles that. You define the states and actions, it runs the loop.
+
+## Example
+
+```rust
+use tokenfetch::{Handlers, ConnectionHandler};
+
+#[derive(Clone, Default)]
+enum States {
     #[default]
     Init,
     Connected(String),
     Disconnected,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Actions {
+#[derive(Copy, Clone)]
+enum Actions {
     Connect,
     Refresh,
 }
@@ -65,6 +72,22 @@ impl Handlers for MyHandler {
 }
 
 fn main() {
-    let a = ConnectionHandler::<MyHandler>::new(());
-    thread::sleep(Duration::from_secs_f32(1.5));
+    let handler = ConnectionHandler::<MyHandler>::new(());
+    
+    // Token refreshes in background
+    loop {
+        if let Some(token) = handler.get_token() {
+            println!("Using: {}", token);
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
 }
+```
+
+## TODO
+
+- [ ] Add exponential backoff support
+- [ ] Configurable polling interval
+- [ ] Metrics/callbacks for state transitions
+- [ ] Better error handling
+- [ ] Examples for common cases (OAuth, JWT, etc.)
