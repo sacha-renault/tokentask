@@ -50,9 +50,13 @@ impl FetchStrategy for OAuthStrategy {
         config: &Self::Config,
         context: &mut Self::Context,
     ) -> Result<TokenSuccess, RetryDuration> {
+        println!("Calling fetch");
         context.last_attempt = Some(Instant::now());
 
-        todo!()
+        Ok(TokenSuccess {
+            token: "token_123".into(),
+            duration: Duration::from_secs(30),
+        })
     }
 
     fn init_context(config: &OAuthConfig) -> Result<Self::Context, ()> {
