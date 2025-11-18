@@ -8,7 +8,7 @@ fn main() {
     let config = OAuthConfig::builder()
         .client_id("123".into())
         .client_secret("123".into())
-        .token_url("123".into())
+        .token_endpoint("123".into())
         .build();
 
     let handler = OAuthConnectionHandler::new(config);

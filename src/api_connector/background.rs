@@ -3,8 +3,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use crate::api_connector::FetchStrategy;
+use crate::api_connector::fetch_strategy::{RetryDuration, TokenSuccess};
 
 #[derive(Debug)]
 pub struct BackgroundTokenFetch<T>
@@ -47,32 +49,32 @@ where
     }
 
     pub fn background_job(&self, receiver: mpsc::Receiver<()>) {
-        let mut state = T::States::default();
-        let mut context = T::Context::default();
+        let mut context = T::init_context(&self.config);
+        let mut wait_duration = Duration::ZERO; // First fetch happens immediately
 
         loop {
-            let wait_duration = T::get_wait_duration(&state, &self.config, &mut context);
-
             // If we receive anything from a mpsc channel, it means we need to quit
             // the loop, otherwise we wait the timeout time
             let end_signal = receiver.recv_timeout(wait_duration);
 
             if let Err(mpsc::RecvTimeoutError::Timeout) = end_signal {
-                let action = T::choose_action(&state, &mut context);
-                state = T::execute(&self.config, action, &mut context);
-                self.maybe_set_token(&state);
+                match T::fetch(&self.config, &mut context) {
+                    Ok(TokenSuccess { token, duration }) => {
+                        self.set_token(token);
+                        wait_duration = duration;
+                    }
+                    Err(RetryDuration(duration)) => wait_duration = duration,
+                }
             } else {
                 break;
             }
         }
     }
 
-    pub fn maybe_set_token(&self, state: &T::States) {
-        if let Some(token) = T::get_token_from_state(state) {
-            if let Ok(mut guard) = self.token_value.lock() {
-                *guard = Some(token.to_string());
-                self.token_changed.store(true, Ordering::Release);
-            }
+    pub fn set_token(&self, token: String) {
+        if let Ok(mut guard) = self.token_value.lock() {
+            *guard = Some(token.to_string());
+            self.token_changed.store(true, Ordering::Release);
         }
     }
 }
