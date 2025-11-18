@@ -4,7 +4,7 @@ use oauth2::{
 };
 use std::time::{Duration, Instant};
 
-use crate::api_connector::{ConnectionHandler, FetchStrategy, RetryDuration, TokenSuccess};
+use crate::api_connector::{ConnectionHandler, FetchStrategy, TokenError, TokenSuccess};
 
 // OAuth Configuration
 #[derive(Debug, Default, Clone, bon::Builder)]
@@ -49,7 +49,7 @@ impl FetchStrategy for OAuthStrategy {
     fn fetch(
         config: &Self::Config,
         context: &mut Self::Context,
-    ) -> Result<TokenSuccess, RetryDuration> {
+    ) -> Result<TokenSuccess, TokenError> {
         println!("Calling fetch");
         context.last_attempt = Some(Instant::now());
 
@@ -57,6 +57,10 @@ impl FetchStrategy for OAuthStrategy {
             token: "token_123".into(),
             duration: Duration::from_secs(30),
         })
+        // Err(TokenError {
+        //     error_message: "token_123".into(),
+        //     duration: Duration::from_secs(30),
+        // })
     }
 
     fn init_context(config: &OAuthConfig) -> Result<Self::Context, ()> {

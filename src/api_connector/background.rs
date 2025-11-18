@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{Arc, RwLockWriteGuard};
 use std::sync::{RwLock, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use crate::api_connector::FetchStrategy;
-use crate::api_connector::fetch_strategy::{RetryDuration, TokenSuccess};
+use crate::api_connector::fetch_strategy::{TokenError, TokenSuccess};
 
 #[derive(Debug)]
 pub struct BackgroundTokenFetch<T>
@@ -61,18 +61,27 @@ where
             // This prevents other threads from using the old token while we're
             // in the process of refreshing it (which would invalidate the old token
             // and cause 401 errors).
-            let mut guard = self
-                .token_value
-                .write()
-                .expect("Token lock poisoned - cannot refresh token");
+            let mut guard = self.acquire_lock();
 
-            match T::fetch(&self.config, &mut context) {
+            wait_duration = match T::fetch(&self.config, &mut context) {
                 Ok(TokenSuccess { token, duration }) => {
                     *guard = Some(token);
-                    wait_duration = duration;
+                    duration
                 }
-                Err(RetryDuration(duration)) => wait_duration = duration,
+                Err(TokenError {
+                    error_message,
+                    duration,
+                }) => {
+                    tracing::warn!("Token refresh failed: {:?}", error_message);
+                    duration
+                }
             }
         }
+    }
+
+    fn acquire_lock(&self) -> RwLockWriteGuard<'_, Option<String>> {
+        self.token_value
+            .write()
+            .expect("Token lock poisoned - cannot refresh token")
     }
 }

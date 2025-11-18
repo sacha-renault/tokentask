@@ -35,7 +35,7 @@ fn main() {
 
     let token = handler.call_some_api(2);
     println!("Token: {token:?}");
-    std::thread::sleep(std::time::Duration::from_secs_f32(1.5));
+    std::thread::sleep(std::time::Duration::from_secs(31));
     let token = handler.call_some_api(3);
     println!("Token: {token:?}");
 }
