@@ -48,13 +48,18 @@ where
 
     pub fn background_job(&self, receiver: mpsc::Receiver<()>) {
         let mut state = T::States::default();
-        let mut wait_duration;
+        let mut context = T::Context::default();
 
         loop {
-            wait_duration = T::get_wait_duration(&state);
-            if let Err(mpsc::RecvTimeoutError::Timeout) = receiver.recv_timeout(wait_duration) {
-                let action = T::choose_action(&state);
-                state = T::execute(&self.config, action);
+            let wait_duration = T::get_wait_duration(&state, &self.config, &mut context);
+
+            // If we receive anything from a mpsc channel, it means we need to quit
+            // the loop, otherwise we wait the timeout time
+            let end_signal = receiver.recv_timeout(wait_duration);
+
+            if let Err(mpsc::RecvTimeoutError::Timeout) = end_signal {
+                let action = T::choose_action(&state, &mut context);
+                state = T::execute(&self.config, action, &mut context);
                 self.maybe_set_token(&state);
             } else {
                 break;

@@ -12,7 +12,6 @@ pub struct OAuthConfig {
 #[derive(Debug, Clone)]
 struct TokenResponse {
     access_token: String,
-    token_type: String,
     expires_in: u64,
     refresh_token: Option<String>,
 }
@@ -26,13 +25,8 @@ pub enum OAuthStates {
         refresh_token: Option<String>,
         expires_at: u64,
     },
-    Disconnected {
-        reason: String,
-        retry_after: Duration,
-    },
-    Error {
-        message: String,
-    },
+    Disconnected,
+    Error,
 }
 
 #[derive(Debug, Clone)]
@@ -67,10 +61,8 @@ impl OAuthStrategy {
     fn connect(config: &OAuthConfig) -> OAuthStates {
         let response = match Self::request_initial_token(config) {
             Ok(r) => r,
-            Err(e) => {
-                return OAuthStates::Error {
-                    message: format!("Connection failed: {}", e),
-                };
+            Err(_) => {
+                return OAuthStates::Error;
             }
         };
 
@@ -84,11 +76,8 @@ impl OAuthStrategy {
     fn refresh(config: &OAuthConfig, refresh_token: &str) -> OAuthStates {
         let response = match Self::request_refresh_token(config, refresh_token) {
             Ok(r) => r,
-            Err(e) => {
-                return OAuthStates::Disconnected {
-                    reason: format!("Refresh failed: {}", e),
-                    retry_after: Duration::from_secs(30),
-                };
+            Err(_) => {
+                return OAuthStates::Disconnected;
             }
         };
 
@@ -106,11 +95,8 @@ impl OAuthStrategy {
 
         let response = match Self::request_initial_token(config) {
             Ok(r) => r,
-            Err(e) => {
-                return OAuthStates::Disconnected {
-                    reason: format!("Reconnection failed: {}", e),
-                    retry_after: Duration::from_secs(60),
-                };
+            Err(_) => {
+                return OAuthStates::Disconnected;
             }
         };
 
@@ -126,20 +112,22 @@ impl FetchStrategy for OAuthStrategy {
     type Config = OAuthConfig;
     type States = OAuthStates;
     type Actions = OAuthActions;
+    type Context = ();
 
-    fn execute(config: &Self::Config, action: Self::Actions) -> Self::States {
+    fn execute(
+        config: &Self::Config,
+        action: Self::Actions,
+        context: &mut Self::Context,
+    ) -> Self::States {
         match action {
             OAuthActions::Connect => Self::connect(config),
             OAuthActions::Refresh { refresh_token } => Self::refresh(config, &refresh_token),
             OAuthActions::Reconnect => Self::reconnect(config),
-            OAuthActions::HandleError => OAuthStates::Disconnected {
-                reason: "Error state, attempting recovery".to_string(),
-                retry_after: Duration::from_secs(10),
-            },
+            OAuthActions::HandleError => OAuthStates::Disconnected,
         }
     }
 
-    fn choose_action(state: &Self::States) -> Self::Actions {
+    fn choose_action(state: &Self::States, context: &mut Self::Context) -> Self::Actions {
         match state {
             OAuthStates::Init => OAuthActions::Connect,
             OAuthStates::Connected {
@@ -174,14 +162,18 @@ impl FetchStrategy for OAuthStrategy {
         }
     }
 
-    fn get_wait_duration(state: &Self::States) -> Duration {
+    fn get_wait_duration(
+        state: &Self::States,
+        config: &Self::Config,
+        context: &mut Self::Context,
+    ) -> Duration {
         match state {
             OAuthStates::Init => Duration::from_secs(0),
             OAuthStates::Connected { expires_at, .. } => {
                 let time_until_refresh = expires_at.saturating_sub(Self::now() + 300);
                 Duration::from_secs(time_until_refresh.max(60))
             }
-            OAuthStates::Disconnected { retry_after, .. } => *retry_after,
+            OAuthStates::Disconnected => Duration::ZERO,
             OAuthStates::Error { .. } => Duration::from_secs(30),
         }
     }
