@@ -1,181 +1,80 @@
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use oauth2::{
+    AuthUrl, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken, IntrospectionUrl,
+    PkceCodeChallenge, RedirectUrl, RevocationUrl, Scope, TokenResponse, TokenUrl,
+};
+use std::time::{Duration, Instant};
 
-use crate::api_connector::{ConnectionHandler, FetchStrategy};
+use crate::api_connector::{ConnectionHandler, FetchStrategy, RetryDuration, TokenSuccess};
 
-#[derive(Debug, Clone, bon::Builder)]
+// OAuth Configuration
+#[derive(Debug, Default, Clone, bon::Builder)]
 pub struct OAuthConfig {
-    pub client_id: String,
-    pub client_secret: String,
-    pub token_url: String,
+    token_uri: String,
+    auth_uri: String,
+    redirect_uri: String,
+    client_id: String,
+    client_secret: String,
+    scope: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-struct TokenResponse {
-    access_token: String,
-    expires_in: u64,
+// OAuth Context tracks refresh token and retry logic
+#[derive(Debug)]
+pub struct OAuthContext {
     refresh_token: Option<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub enum OAuthStates {
-    #[default]
-    Init,
-    Connected {
-        access_token: String,
-        refresh_token: Option<String>,
-        expires_at: u64,
-    },
-    Disconnected,
-    Error,
-}
-
-#[derive(Debug, Clone)]
-pub enum OAuthActions {
-    Connect,
-    Refresh { refresh_token: String },
-    Reconnect,
-    HandleError,
+    consecutive_failures: u32,
+    last_attempt: Option<Instant>,
+    oauth_client: Client<
+        oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
+        oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>,
+        oauth2::StandardTokenIntrospectionResponse<
+            oauth2::EmptyExtraTokenFields,
+            oauth2::basic::BasicTokenType,
+        >,
+        oauth2::StandardRevocableToken,
+        oauth2::StandardErrorResponse<oauth2::RevocationErrorResponseType>,
+        oauth2::EndpointSet,
+        oauth2::EndpointNotSet,
+        oauth2::EndpointNotSet,
+        oauth2::EndpointNotSet,
+        oauth2::EndpointSet,
+    >,
 }
 
 pub struct OAuthStrategy;
 
-impl OAuthStrategy {
-    fn request_initial_token(config: &OAuthConfig) -> Result<TokenResponse, String> {
-        todo!()
-    }
-
-    fn request_refresh_token(
-        config: &OAuthConfig,
-        refresh_token: &str,
-    ) -> Result<TokenResponse, String> {
-        todo!()
-    }
-
-    fn now() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    }
-
-    fn connect(config: &OAuthConfig) -> OAuthStates {
-        let response = match Self::request_initial_token(config) {
-            Ok(r) => r,
-            Err(_) => {
-                return OAuthStates::Error;
-            }
-        };
-
-        OAuthStates::Connected {
-            access_token: response.access_token,
-            refresh_token: response.refresh_token,
-            expires_at: Self::now() + response.expires_in,
-        }
-    }
-
-    fn refresh(config: &OAuthConfig, refresh_token: &str) -> OAuthStates {
-        let response = match Self::request_refresh_token(config, refresh_token) {
-            Ok(r) => r,
-            Err(_) => {
-                return OAuthStates::Disconnected;
-            }
-        };
-
-        OAuthStates::Connected {
-            access_token: response.access_token,
-            refresh_token: response
-                .refresh_token
-                .or_else(|| Some(refresh_token.to_string())),
-            expires_at: Self::now() + response.expires_in,
-        }
-    }
-
-    fn reconnect(config: &OAuthConfig) -> OAuthStates {
-        std::thread::sleep(Duration::from_secs(5));
-
-        let response = match Self::request_initial_token(config) {
-            Ok(r) => r,
-            Err(_) => {
-                return OAuthStates::Disconnected;
-            }
-        };
-
-        OAuthStates::Connected {
-            access_token: response.access_token,
-            refresh_token: response.refresh_token,
-            expires_at: Self::now() + response.expires_in,
-        }
-    }
-}
-
 impl FetchStrategy for OAuthStrategy {
     type Config = OAuthConfig;
-    type States = OAuthStates;
-    type Actions = OAuthActions;
-    type Context = ();
+    type Context = OAuthContext;
 
-    fn execute(
-        config: &Self::Config,
-        action: Self::Actions,
-        context: &mut Self::Context,
-    ) -> Self::States {
-        match action {
-            OAuthActions::Connect => Self::connect(config),
-            OAuthActions::Refresh { refresh_token } => Self::refresh(config, &refresh_token),
-            OAuthActions::Reconnect => Self::reconnect(config),
-            OAuthActions::HandleError => OAuthStates::Disconnected,
-        }
-    }
-
-    fn choose_action(state: &Self::States, context: &mut Self::Context) -> Self::Actions {
-        match state {
-            OAuthStates::Init => OAuthActions::Connect,
-            OAuthStates::Connected {
-                expires_at,
-                refresh_token,
-                ..
-            } => {
-                let expires_soon = *expires_at <= Self::now() + 300;
-
-                if !expires_soon {
-                    return OAuthActions::Refresh {
-                        refresh_token: refresh_token.clone().unwrap_or_default(),
-                    };
-                }
-
-                match refresh_token {
-                    Some(token) => OAuthActions::Refresh {
-                        refresh_token: token.clone(),
-                    },
-                    None => OAuthActions::Reconnect,
-                }
-            }
-            OAuthStates::Disconnected { .. } => OAuthActions::Reconnect,
-            OAuthStates::Error { .. } => OAuthActions::HandleError,
-        }
-    }
-
-    fn get_token_from_state(state: &Self::States) -> Option<&str> {
-        match state {
-            OAuthStates::Connected { access_token, .. } => Some(access_token),
-            _ => None,
-        }
-    }
-
-    fn get_wait_duration(
-        state: &Self::States,
+    fn fetch(
         config: &Self::Config,
         context: &mut Self::Context,
-    ) -> Duration {
-        match state {
-            OAuthStates::Init => Duration::from_secs(0),
-            OAuthStates::Connected { expires_at, .. } => {
-                let time_until_refresh = expires_at.saturating_sub(Self::now() + 300);
-                Duration::from_secs(time_until_refresh.max(60))
-            }
-            OAuthStates::Disconnected => Duration::ZERO,
-            OAuthStates::Error { .. } => Duration::from_secs(30),
-        }
+    ) -> Result<TokenSuccess, RetryDuration> {
+        context.last_attempt = Some(Instant::now());
+
+        todo!()
+    }
+
+    fn init_context(config: &OAuthConfig) -> Result<Self::Context, ()> {
+        let OAuthConfig {
+            token_uri,
+            auth_uri,
+            redirect_uri,
+            client_id,
+            ..
+        } = config.clone();
+
+        let client = oauth2::basic::BasicClient::new(ClientId::new(client_id))
+            .set_auth_uri(AuthUrl::new(auth_uri).map_err(|_| ())?)
+            .set_token_uri(TokenUrl::new(token_uri).map_err(|_| ())?)
+            .set_redirect_uri(RedirectUrl::new(redirect_uri).map_err(|_| ())?);
+
+        Ok(OAuthContext {
+            refresh_token: None,
+            consecutive_failures: 0,
+            last_attempt: None,
+            oauth_client: client,
+        })
     }
 }
 

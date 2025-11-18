@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::{RwLock, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -13,8 +12,7 @@ pub struct BackgroundTokenFetch<T>
 where
     T: FetchStrategy,
 {
-    pub(super) token_changed: AtomicBool,
-    pub(super) token_value: Mutex<Option<String>>,
+    pub(super) token_value: RwLock<Option<String>>,
     sender: mpsc::Sender<()>,
     config: T::Config,
     _p: PhantomData<T>,
@@ -27,12 +25,10 @@ where
     pub fn new_job(config: T::Config) -> (Arc<Self>, JoinHandle<()>) {
         // initialize the struct
         let (sender, receiver) = mpsc::channel();
-        let token_changed = AtomicBool::new(false);
-        let token_value = Mutex::new(None);
+        let token_value = RwLock::new(None);
 
         let fetcher = Arc::new(Self {
             sender,
-            token_changed,
             token_value,
             config,
             _p: PhantomData,
@@ -49,7 +45,7 @@ where
     }
 
     pub fn background_job(&self, receiver: mpsc::Receiver<()>) {
-        let mut context = T::init_context(&self.config);
+        let mut context = T::init_context(&self.config).unwrap(); // TODO ??!!
         let mut wait_duration = Duration::ZERO; // First fetch happens immediately
 
         loop {
@@ -57,24 +53,26 @@ where
             // the loop, otherwise we wait the timeout time
             let end_signal = receiver.recv_timeout(wait_duration);
 
-            if let Err(mpsc::RecvTimeoutError::Timeout) = end_signal {
-                match T::fetch(&self.config, &mut context) {
-                    Ok(TokenSuccess { token, duration }) => {
-                        self.set_token(token);
-                        wait_duration = duration;
-                    }
-                    Err(RetryDuration(duration)) => wait_duration = duration,
-                }
-            } else {
+            if !matches!(end_signal, Err(mpsc::RecvTimeoutError::Timeout)) {
                 break;
             }
-        }
-    }
 
-    pub fn set_token(&self, token: String) {
-        if let Ok(mut guard) = self.token_value.lock() {
-            *guard = Some(token.to_string());
-            self.token_changed.store(true, Ordering::Release);
+            // We need to acquire the write lock BEFORE fetching the new token.
+            // This prevents other threads from using the old token while we're
+            // in the process of refreshing it (which would invalidate the old token
+            // and cause 401 errors).
+            let mut guard = self
+                .token_value
+                .write()
+                .expect("Token lock poisoned - cannot refresh token");
+
+            match T::fetch(&self.config, &mut context) {
+                Ok(TokenSuccess { token, duration }) => {
+                    *guard = Some(token);
+                    wait_duration = duration;
+                }
+                Err(RetryDuration(duration)) => wait_duration = duration,
+            }
         }
     }
 }
