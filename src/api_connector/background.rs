@@ -5,11 +5,12 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use parking_lot::RwLockReadGuard;
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 use crate::api_connector::FetchStrategy;
 use crate::api_connector::fetch_strategy::{TokenError, TokenSuccess};
+use crate::api_connector::two_stage_lock::LockStrategy;
+use crate::api_connector::two_stage_lock::lock_around;
 
 #[derive(Debug)]
 pub struct BackgroundTokenFetch<T>
@@ -20,6 +21,7 @@ where
     sender: mpsc::Sender<()>,
     config: T::Config,
     handle: Mutex<Option<JoinHandle<()>>>,
+    lock_strategy: LockStrategy,
     _p: PhantomData<T>,
 }
 
@@ -36,6 +38,7 @@ where
             sender,
             token_value,
             config,
+            lock_strategy: LockStrategy::BeforeFetch,
             handle: Mutex::new(None),
             _p: PhantomData,
         });
@@ -62,16 +65,15 @@ where
             let end_signal = receiver.recv_timeout(wait_duration);
 
             if !matches!(end_signal, Err(mpsc::RecvTimeoutError::Timeout)) {
+                tracing::debug!("Token refresh background job shutting down");
                 break;
             }
 
-            // We need to acquire the write lock BEFORE fetching the new token.
-            // This prevents other threads from using the old token while we're
-            // in the process of refreshing it (which would invalidate the old token
-            // and cause 401 errors).
-            let mut guard = self.acquire_lock();
+            let (mut guard, result) = lock_around(&self.token_value, self.lock_strategy, || {
+                T::fetch(&self.config, &mut context)
+            });
 
-            wait_duration = match T::fetch(&self.config, &mut context) {
+            wait_duration = match result {
                 Ok(TokenSuccess { token, duration }) => {
                     *guard = Some(token);
                     duration
@@ -80,6 +82,7 @@ where
                     error_message,
                     duration,
                 }) => {
+                    drop(guard);
                     tracing::warn!("Token refresh failed: {:?}", error_message);
                     duration
                 }
@@ -89,10 +92,6 @@ where
 
     fn acquire_lock(&self) -> RwLockWriteGuard<'_, Option<String>> {
         self.token_value.write()
-    }
-
-    pub fn acquire_read(&self) -> RwLockReadGuard<'_, Option<String>> {
-        self.token_value.read()
     }
 }
 
