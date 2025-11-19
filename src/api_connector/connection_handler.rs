@@ -14,7 +14,7 @@ where
     T: FetchStrategy,
 {
     pub fn new(config: T::Config) -> Self {
-        let inner = BackgroundTokenFetch::new_job(config);
+        let inner = BackgroundTokenFetch::new(config);
 
         Self { inner }
     }

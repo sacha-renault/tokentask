@@ -27,7 +27,7 @@ impl<T> BackgroundTokenFetch<T>
 where
     T: FetchStrategy,
 {
-    pub fn new_job(config: T::Config) -> Arc<Self> {
+    pub fn new(config: T::Config) -> Arc<Self> {
         // initialize the struct
         let (sender, receiver) = mpsc::channel();
         let token_value = RwLock::new(None);
