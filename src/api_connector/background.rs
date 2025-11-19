@@ -1,8 +1,10 @@
 use std::marker::PhantomData;
-use std::sync::{Arc, RwLockWriteGuard};
-use std::sync::{RwLock, mpsc};
+use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+
+use parking_lot::{RwLock, RwLockWriteGuard};
 
 use crate::api_connector::FetchStrategy;
 use crate::api_connector::fetch_strategy::{TokenError, TokenSuccess};
@@ -80,8 +82,6 @@ where
     }
 
     fn acquire_lock(&self) -> RwLockWriteGuard<'_, Option<String>> {
-        self.token_value
-            .write()
-            .expect("Token lock poisoned - cannot refresh token")
+        self.token_value.write()
     }
 }
