@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
@@ -23,7 +22,6 @@ where
     config: T::Config,
     handle: Mutex<Option<JoinHandle<()>>>,
     lock_strategy: FetchBehavior,
-    _p: PhantomData<T>,
 }
 
 impl<T> BackgroundTokenFetch<T>
@@ -41,7 +39,6 @@ where
             config,
             lock_strategy,
             handle: Mutex::new(None),
-            _p: PhantomData,
         });
         let self_clone = Arc::clone(&fetcher);
 
