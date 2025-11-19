@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::api_connector::{FetchStrategy, background::BackgroundTokenFetch};
+use crate::api_connector::{
+    FetchStrategy, background::BackgroundTokenFetch, lock_around::FetchBehavior,
+};
 
 pub struct ConnectionHandler<T>
 where
@@ -13,8 +15,8 @@ impl<T> ConnectionHandler<T>
 where
     T: FetchStrategy,
 {
-    pub fn new(config: T::Config) -> Self {
-        let inner = BackgroundTokenFetch::new(config);
+    pub fn new(lock_strategy: FetchBehavior, config: T::Config) -> Self {
+        let inner = BackgroundTokenFetch::new(lock_strategy, config);
 
         Self { inner }
     }

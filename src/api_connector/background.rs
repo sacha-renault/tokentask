@@ -5,12 +5,13 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use parking_lot::Mutex;
-use parking_lot::{RwLock, RwLockWriteGuard};
+use parking_lot::RwLock;
+use parking_lot::RwLockReadGuard;
 
 use crate::api_connector::FetchStrategy;
 use crate::api_connector::fetch_strategy::{TokenError, TokenSuccess};
-use crate::api_connector::two_stage_lock::LockStrategy;
-use crate::api_connector::two_stage_lock::lock_around;
+use crate::api_connector::lock_around::FetchBehavior;
+use crate::api_connector::lock_around::lock_around;
 
 #[derive(Debug)]
 pub struct BackgroundTokenFetch<T>
@@ -21,7 +22,7 @@ where
     sender: mpsc::Sender<()>,
     config: T::Config,
     handle: Mutex<Option<JoinHandle<()>>>,
-    lock_strategy: LockStrategy,
+    lock_strategy: FetchBehavior,
     _p: PhantomData<T>,
 }
 
@@ -29,7 +30,7 @@ impl<T> BackgroundTokenFetch<T>
 where
     T: FetchStrategy,
 {
-    pub fn new(config: T::Config) -> Arc<Self> {
+    pub fn new(lock_strategy: FetchBehavior, config: T::Config) -> Arc<Self> {
         // initialize the struct
         let (sender, receiver) = mpsc::channel();
         let token_value = RwLock::new(None);
@@ -38,7 +39,7 @@ where
             sender,
             token_value,
             config,
-            lock_strategy: LockStrategy::BeforeFetch,
+            lock_strategy,
             handle: Mutex::new(None),
             _p: PhantomData,
         });
@@ -90,8 +91,8 @@ where
         }
     }
 
-    fn acquire_lock(&self) -> RwLockWriteGuard<'_, Option<String>> {
-        self.token_value.write()
+    pub fn acquire_read(&self) -> RwLockReadGuard<'_, Option<String>> {
+        self.token_value.read()
     }
 }
 

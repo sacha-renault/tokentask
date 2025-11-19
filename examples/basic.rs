@@ -1,4 +1,7 @@
-use tokentask::oauth::{OAuthConfig, OAuthConnectionHandler};
+use tokentask::{
+    FetchBehavior,
+    oauth::{OAuthConfig, OAuthConnectionHandler},
+};
 
 struct Test {
     handler: OAuthConnectionHandler,
@@ -8,7 +11,7 @@ struct Test {
 impl Test {
     fn new(config: OAuthConfig) -> Self {
         Self {
-            handler: OAuthConnectionHandler::new(config),
+            handler: OAuthConnectionHandler::new(FetchBehavior::OldTokenRemainsValid, config),
             call_api_count: 0,
         }
     }
