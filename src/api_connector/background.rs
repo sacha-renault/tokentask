@@ -4,6 +4,8 @@ use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use parking_lot::Mutex;
+use parking_lot::RwLockReadGuard;
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 use crate::api_connector::FetchStrategy;
@@ -14,9 +16,10 @@ pub struct BackgroundTokenFetch<T>
 where
     T: FetchStrategy,
 {
-    pub(super) token_value: RwLock<Option<String>>,
+    token_value: RwLock<Option<String>>,
     sender: mpsc::Sender<()>,
     config: T::Config,
+    handle: Mutex<Option<JoinHandle<()>>>,
     _p: PhantomData<T>,
 }
 
@@ -24,7 +27,7 @@ impl<T> BackgroundTokenFetch<T>
 where
     T: FetchStrategy,
 {
-    pub fn new_job(config: T::Config) -> (Arc<Self>, JoinHandle<()>) {
+    pub fn new_job(config: T::Config) -> Arc<Self> {
         // initialize the struct
         let (sender, receiver) = mpsc::channel();
         let token_value = RwLock::new(None);
@@ -33,13 +36,16 @@ where
             sender,
             token_value,
             config,
+            handle: Mutex::new(None),
             _p: PhantomData,
         });
         let self_clone = Arc::clone(&fetcher);
 
         // Spawn the inner thread
         let handle = thread::spawn(move || self_clone.background_job(receiver));
-        (fetcher, handle)
+        *fetcher.handle.lock() = Some(handle);
+
+        fetcher
     }
 
     pub fn exit(&self) {
@@ -47,7 +53,7 @@ where
     }
 
     pub fn background_job(&self, receiver: mpsc::Receiver<()>) {
-        let mut context = T::init_context(&self.config).unwrap(); // TODO ??!!
+        let mut context = T::init_context(&self.config);
         let mut wait_duration = Duration::ZERO; // First fetch happens immediately
 
         loop {
@@ -83,5 +89,21 @@ where
 
     fn acquire_lock(&self) -> RwLockWriteGuard<'_, Option<String>> {
         self.token_value.write()
+    }
+
+    pub fn acquire_read(&self) -> RwLockReadGuard<'_, Option<String>> {
+        self.token_value.read()
+    }
+}
+
+impl<T> Drop for BackgroundTokenFetch<T>
+where
+    T: FetchStrategy,
+{
+    fn drop(&mut self) {
+        self.exit();
+        if let Some(handle) = self.handle.lock().take() {
+            let _ = handle.join();
+        }
     }
 }

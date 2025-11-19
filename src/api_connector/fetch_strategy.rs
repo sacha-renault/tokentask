@@ -19,5 +19,5 @@ pub trait FetchStrategy: Send + Sync + 'static {
         context: &mut Self::Context,
     ) -> Result<TokenSuccess, TokenError>;
 
-    fn init_context(config: &Self::Config) -> Result<Self::Context, ()>;
+    fn init_context(config: &Self::Config) -> Self::Context;
 }

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::thread::JoinHandle;
 
 use crate::api_connector::{FetchStrategy, background::BackgroundTokenFetch};
 
@@ -8,7 +7,6 @@ where
     T: FetchStrategy,
 {
     inner: Arc<BackgroundTokenFetch<T>>,
-    thread_handle: Option<JoinHandle<()>>,
 }
 
 impl<T> ConnectionHandler<T>
@@ -16,12 +14,9 @@ where
     T: FetchStrategy,
 {
     pub fn new(config: T::Config) -> Self {
-        let (inner, thread_handle) = BackgroundTokenFetch::new_job(config);
+        let inner = BackgroundTokenFetch::new_job(config);
 
-        Self {
-            inner,
-            thread_handle: Some(thread_handle),
-        }
+        Self { inner }
     }
 
     /// Execute a closure with a valid token, preventing refresh during use
@@ -29,19 +24,7 @@ where
     where
         F: FnOnce(&str) -> R,
     {
-        let token_guard = self.inner.token_value.read().ok()?;
+        let token_guard = self.inner.acquire_read();
         token_guard.as_ref().map(|token| f(token))
-    }
-}
-
-impl<T> Drop for ConnectionHandler<T>
-where
-    T: FetchStrategy,
-{
-    fn drop(&mut self) {
-        self.inner.exit();
-        if let Some(handle) = self.thread_handle.take() {
-            let _ = handle.join();
-        }
     }
 }

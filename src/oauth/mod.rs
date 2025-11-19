@@ -63,7 +63,7 @@ impl FetchStrategy for OAuthStrategy {
         // })
     }
 
-    fn init_context(config: &OAuthConfig) -> Result<Self::Context, ()> {
+    fn init_context(config: &OAuthConfig) -> Self::Context {
         let OAuthConfig {
             token_uri,
             auth_uri,
@@ -73,16 +73,16 @@ impl FetchStrategy for OAuthStrategy {
         } = config.clone();
 
         let client = oauth2::basic::BasicClient::new(ClientId::new(client_id))
-            .set_auth_uri(AuthUrl::new(auth_uri).map_err(|_| ())?)
-            .set_token_uri(TokenUrl::new(token_uri).map_err(|_| ())?)
-            .set_redirect_uri(RedirectUrl::new(redirect_uri).map_err(|_| ())?);
+            .set_auth_uri(AuthUrl::new(auth_uri).unwrap())
+            .set_token_uri(TokenUrl::new(token_uri).unwrap())
+            .set_redirect_uri(RedirectUrl::new(redirect_uri).unwrap());
 
-        Ok(OAuthContext {
+        OAuthContext {
             refresh_token: None,
             consecutive_failures: 0,
             last_attempt: None,
             oauth_client: client,
-        })
+        }
     }
 }
 
