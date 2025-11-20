@@ -9,7 +9,6 @@ pub enum FetchBehavior {
     OldTokenRemainsValid,
 }
 
-// TODO find a better name
 pub fn lock_around<'a, F, T, R>(
     rw: &'a RwLock<T>,
     when: FetchBehavior,

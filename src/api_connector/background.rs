@@ -71,12 +71,18 @@ where
             // the loop, otherwise we wait the timeout time
             let end_signal = receiver.recv_timeout(wait_duration);
 
-            match end_signal {
+            let lock_strategy = match end_signal {
+                // We receive End signal or we disconnected => we need to stop
                 Ok(ThreadMessage::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(mpsc::RecvTimeoutError::Timeout) | Ok(ThreadMessage::InvalidToken) => {} // Just continue normally
-            }
 
-            let (mut guard, result) = lock_around(&self.token_value, self.lock_strategy, || {
+                // Continue normally
+                Err(mpsc::RecvTimeoutError::Timeout) => self.lock_strategy,
+
+                // Token is known invalid - block all requests until we get a new one
+                Ok(ThreadMessage::InvalidToken) => FetchBehavior::FetchInvalidatesToken,
+            };
+
+            let (mut guard, result) = lock_around(&self.token_value, lock_strategy, || {
                 T::fetch(&self.config, &mut context)
             });
 
