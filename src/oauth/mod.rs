@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use oauth2::basic::BasicClient;
 use oauth2::reqwest::blocking::Client;
 use oauth2::url::ParseError;
-use oauth2::{ClientId, ClientSecret, RefreshToken, Scope, TokenUrl};
+use oauth2::{ClientId, ClientSecret, Scope, TokenUrl};
 use oauth2::{TokenResponse, reqwest};
 
 use crate::api_connector::{ConnectionHandler, FetchStrategy, TokenError, TokenSuccess};
@@ -48,7 +48,6 @@ pub struct OAuthConfig {
 // OAuth Context tracks refresh token and retry logic
 #[derive(Debug)]
 pub struct OAuthContext {
-    refresh_token: Option<String>,
     consecutive_failures: u32,
     last_attempt: Option<Instant>,
     client: Client,
@@ -79,31 +78,6 @@ fn request_token(
         .request(http_client)
 }
 
-fn refresh_token(
-    http_client: &Client,
-    config: &OAuthConfig,
-    refresh_token: &str,
-) -> Result<
-    oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>,
-    oauth2::RequestTokenError<
-        oauth2::HttpClientError<oauth2::reqwest::Error>,
-        oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
-    >,
-> {
-    let OAuthCredentialsConfig {
-        token_uri,
-        client_id,
-        client_secret,
-        ..
-    } = config.credentials.clone();
-
-    BasicClient::new(client_id)
-        .set_client_secret(client_secret)
-        .set_token_uri(token_uri)
-        .exchange_refresh_token(&RefreshToken::new(refresh_token.into()))
-        .request(http_client)
-}
-
 pub struct OAuthStrategy;
 
 impl FetchStrategy for OAuthStrategy {
@@ -117,21 +91,10 @@ impl FetchStrategy for OAuthStrategy {
         tracing::debug!("Calling fetch");
         context.last_attempt = Some(Instant::now());
 
-        let result = if let Some(token) = context.refresh_token.as_ref() {
-            let result = refresh_token(&context.client, config, token);
-            if result.is_ok() {
-                result
-            } else { // refresh failed, query a fresh new token
-                request_token(&context.client, config)
-            }
-        } else {
-            request_token(&context.client, config)
-        };
-
-        match result {
+        match request_token(&context.client, config) {
             Ok(resp) => {
+                tracing::debug!("{resp:#?}"); // This doesn't print the token: "AccessToken([redacted])"
                 context.consecutive_failures = 0;
-                context.refresh_token = resp.refresh_token().map(|v| v.secret()).cloned();
 
                 let fetch_after = if let Some(exp) = resp.expires_in() {
                     // Refresh 10% before expiration, capped between 5s and 5min
@@ -163,7 +126,6 @@ impl FetchStrategy for OAuthStrategy {
 
     fn init_context(_config: &OAuthConfig) -> Self::Context {
         OAuthContext {
-            refresh_token: None,
             consecutive_failures: 0,
             last_attempt: None,
             client: Client::builder()
