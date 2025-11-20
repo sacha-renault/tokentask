@@ -1,6 +1,6 @@
 use tokentask::{
     FetchBehavior,
-    oauth::{OAuthConfig, OAuthConnectionHandler},
+    oauth::{OAuthConfig, OAuthConnectionHandler, OAuthCredentialsConfig},
 };
 
 struct Test {
@@ -26,13 +26,14 @@ impl Test {
 }
 
 fn main() {
-    let config = OAuthConfig::builder()
+    let credentials = OAuthCredentialsConfig::builder()
         .client_id("123".into())
         .client_secret("123".into())
         .token_uri("http://localhost.com".into())
-        .auth_uri("http://localhost.com".into())
-        .redirect_uri("http://localhost.com".into())
+        .unwrap()
         .build();
+
+    let config = OAuthConfig::builder().credentials(credentials).build();
 
     let mut handler = Test::new(config);
 
