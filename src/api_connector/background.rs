@@ -12,13 +12,18 @@ use crate::api_connector::fetch_strategy::{TokenError, TokenSuccess};
 use crate::api_connector::lock_around::FetchBehavior;
 use crate::api_connector::lock_around::lock_around;
 
+pub enum ThreadMessage {
+    Stop,
+    InvalidToken,
+}
+
 #[derive(Debug)]
 pub struct BackgroundTokenFetch<T>
 where
     T: FetchStrategy,
 {
     token_value: RwLock<Option<String>>,
-    sender: mpsc::Sender<()>,
+    sender: mpsc::Sender<ThreadMessage>,
     config: T::Config,
     handle: Mutex<Option<JoinHandle<()>>>,
     lock_strategy: FetchBehavior,
@@ -50,21 +55,25 @@ where
     }
 
     pub fn exit(&self) {
-        let _ = self.sender.send(());
+        let _ = self.sender.send(ThreadMessage::Stop);
     }
 
-    pub fn background_job(&self, receiver: mpsc::Receiver<()>) {
+    pub fn invalid_token(&self) {
+        let _ = self.sender.send(ThreadMessage::InvalidToken);
+    }
+
+    pub fn background_job(&self, receiver: mpsc::Receiver<ThreadMessage>) {
         let mut context = T::init_context(&self.config);
-        let mut wait_duration = Duration::ZERO; // First fetch happens immediately
+        let mut wait_duration = Duration::ZERO; // First fetch ocurres immediately
 
         loop {
             // If we receive anything from a mpsc channel, it means we need to quit
             // the loop, otherwise we wait the timeout time
             let end_signal = receiver.recv_timeout(wait_duration);
 
-            if !matches!(end_signal, Err(mpsc::RecvTimeoutError::Timeout)) {
-                tracing::debug!("Token refresh background job shutting down");
-                break;
+            match end_signal {
+                Ok(ThreadMessage::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) | Ok(ThreadMessage::InvalidToken) => {} // Just continue normally
             }
 
             let (mut guard, result) = lock_around(&self.token_value, self.lock_strategy, || {

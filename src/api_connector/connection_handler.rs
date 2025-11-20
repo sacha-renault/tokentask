@@ -29,4 +29,8 @@ where
         let token_guard = self.inner.acquire_read();
         token_guard.as_ref().map(|token| f(token))
     }
+
+    pub fn invalid_token(&self) {
+        self.inner.invalid_token();
+    }
 }
