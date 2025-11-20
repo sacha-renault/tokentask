@@ -10,9 +10,9 @@ pub struct TokenError {
     pub retry_after: Duration,
 }
 
-pub trait FetchStrategy: Send + Sync + 'static {
-    type Config: Send + Sync + 'static;
-    type Context;
+pub trait FetchStrategy: 'static {
+    type Config: Send + Sync;
+    type Context: Send + Sync;
 
     fn fetch(
         config: &Self::Config,

@@ -11,7 +11,7 @@ struct Test {
 impl Test {
     fn new(config: OAuthConfig) -> Self {
         Self {
-            handler: OAuthConnectionHandler::new(LockBehavior::HoldAfterOperation, config),
+            handler: OAuthConnectionHandler::init(LockBehavior::HoldAfterOperation, config),
             call_api_count: 0,
         }
     }
@@ -26,6 +26,10 @@ impl Test {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let credentials = OAuthCredentialsConfig::builder()
         .client_id("123".into())
         .client_secret("123".into())

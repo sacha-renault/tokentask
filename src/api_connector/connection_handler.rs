@@ -15,8 +15,8 @@ impl<T> ConnectionHandler<T>
 where
     T: FetchStrategy,
 {
-    pub fn new(lock_strategy: LockBehavior, config: T::Config) -> Self {
-        let inner = BackgroundTokenFetch::new(lock_strategy, config);
+    pub fn init(lock_strategy: LockBehavior, config: T::Config) -> Self {
+        let inner = BackgroundTokenFetch::init(lock_strategy, config);
 
         Self { inner }
     }
