@@ -87,13 +87,16 @@ where
             });
 
             wait_duration = match result {
-                Ok(TokenSuccess { token, duration }) => {
+                Ok(TokenSuccess {
+                    token,
+                    fetch_after: duration,
+                }) => {
                     *guard = Some(token);
                     duration
                 }
                 Err(TokenError {
                     error_message,
-                    duration,
+                    retry_after: duration,
                 }) => {
                     drop(guard);
                     tracing::warn!("Token refresh failed: {:?}", error_message);

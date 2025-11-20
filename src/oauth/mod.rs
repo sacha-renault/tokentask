@@ -118,7 +118,12 @@ impl FetchStrategy for OAuthStrategy {
         context.last_attempt = Some(Instant::now());
 
         let result = if let Some(token) = context.refresh_token.as_ref() {
-            refresh_token(&context.client, config, token)
+            let result = refresh_token(&context.client, config, token);
+            if result.is_ok() {
+                result
+            } else { // refresh failed, query a fresh new token
+                request_token(&context.client, config)
+            }
         } else {
             request_token(&context.client, config)
         };
@@ -127,7 +132,8 @@ impl FetchStrategy for OAuthStrategy {
             Ok(resp) => {
                 context.consecutive_failures = 0;
                 context.refresh_token = resp.refresh_token().map(|v| v.secret()).cloned();
-                let duration = if let Some(exp) = resp.expires_in() {
+
+                let fetch_after = if let Some(exp) = resp.expires_in() {
                     // Refresh 10% before expiration, capped between 5s and 5min
                     let overlap = exp.mul_f32(config.overlap_percentage);
                     let overlap = overlap
@@ -140,16 +146,16 @@ impl FetchStrategy for OAuthStrategy {
 
                 Ok(TokenSuccess {
                     token: resp.access_token().secret().clone(),
-                    duration,
+                    fetch_after,
                 })
             }
             Err(err) => {
                 context.consecutive_failures += 1;
-                let duration = Duration::from_secs(30);
+                let retry_after = Duration::from_secs(30);
 
                 Err(TokenError {
                     error_message: err.to_string(),
-                    duration,
+                    retry_after,
                 })
             }
         }

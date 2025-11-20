@@ -2,12 +2,12 @@ use std::time::Duration;
 
 pub struct TokenSuccess {
     pub token: String,
-    pub duration: Duration,
+    pub fetch_after: Duration,
 }
 
 pub struct TokenError {
     pub error_message: String,
-    pub duration: Duration,
+    pub retry_after: Duration,
 }
 
 pub trait FetchStrategy: Send + Sync + 'static {
