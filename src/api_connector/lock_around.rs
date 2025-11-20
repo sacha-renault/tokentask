@@ -1,29 +1,29 @@
 use parking_lot::{RwLock, RwLockWriteGuard};
 
 #[derive(Debug, Copy, Clone)]
-pub enum FetchBehavior {
-    /// Fetch invalidates the old token - must hold lock during fetch
-    FetchInvalidatesToken,
+pub enum LockBehavior {
+    /// Hold lock during operation
+    HoldDuringOperation,
 
-    /// Old token remains valid - only lock when writing new token
-    OldTokenRemainsValid,
+    /// Hold lock only after operation
+    HoldAfterOperation,
 }
 
 pub fn lock_around<'a, F, T, R>(
     rw: &'a RwLock<T>,
-    when: FetchBehavior,
+    when: LockBehavior,
     func: F,
 ) -> (RwLockWriteGuard<'a, T>, R)
 where
     F: FnOnce() -> R,
 {
     match when {
-        FetchBehavior::FetchInvalidatesToken => {
+        LockBehavior::HoldDuringOperation => {
             let lock = rw.write();
             let result = func();
             (lock, result)
         }
-        FetchBehavior::OldTokenRemainsValid => {
+        LockBehavior::HoldAfterOperation => {
             let result = func();
             let lock = rw.write();
             (lock, result)

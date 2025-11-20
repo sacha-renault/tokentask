@@ -1,5 +1,5 @@
 use tokentask::{
-    FetchBehavior,
+    LockBehavior,
     oauth::{OAuthConfig, OAuthConnectionHandler, OAuthCredentialsConfig},
 };
 
@@ -11,7 +11,7 @@ struct Test {
 impl Test {
     fn new(config: OAuthConfig) -> Self {
         Self {
-            handler: OAuthConnectionHandler::new(FetchBehavior::OldTokenRemainsValid, config),
+            handler: OAuthConnectionHandler::new(LockBehavior::HoldAfterOperation, config),
             call_api_count: 0,
         }
     }

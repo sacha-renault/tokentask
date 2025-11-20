@@ -9,7 +9,7 @@ use parking_lot::RwLockReadGuard;
 
 use crate::api_connector::FetchStrategy;
 use crate::api_connector::fetch_strategy::{TokenError, TokenSuccess};
-use crate::api_connector::lock_around::FetchBehavior;
+use crate::api_connector::lock_around::LockBehavior;
 use crate::api_connector::lock_around::lock_around;
 
 pub enum ThreadMessage {
@@ -26,14 +26,14 @@ where
     sender: mpsc::Sender<ThreadMessage>,
     config: T::Config,
     handle: Mutex<Option<JoinHandle<()>>>,
-    lock_strategy: FetchBehavior,
+    lock_behavior: LockBehavior,
 }
 
 impl<T> BackgroundTokenFetch<T>
 where
     T: FetchStrategy,
 {
-    pub fn new(lock_strategy: FetchBehavior, config: T::Config) -> Arc<Self> {
+    pub fn new(lock_behavior: LockBehavior, config: T::Config) -> Arc<Self> {
         // initialize the struct
         let (sender, receiver) = mpsc::channel();
         let token_value = RwLock::new(None);
@@ -42,7 +42,7 @@ where
             sender,
             token_value,
             config,
-            lock_strategy,
+            lock_behavior,
             handle: Mutex::new(None),
         });
         let self_clone = Arc::clone(&fetcher);
@@ -76,10 +76,10 @@ where
                 Ok(ThreadMessage::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
 
                 // Continue normally
-                Err(mpsc::RecvTimeoutError::Timeout) => self.lock_strategy,
+                Err(mpsc::RecvTimeoutError::Timeout) => self.lock_behavior,
 
                 // Token is known invalid - block all requests until we get a new one
-                Ok(ThreadMessage::InvalidToken) => FetchBehavior::FetchInvalidatesToken,
+                Ok(ThreadMessage::InvalidToken) => LockBehavior::HoldDuringOperation,
             };
 
             let (mut guard, result) = lock_around(&self.token_value, lock_strategy, || {

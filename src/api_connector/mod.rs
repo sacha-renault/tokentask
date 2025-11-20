@@ -5,4 +5,4 @@ mod lock_around;
 
 pub use connection_handler::ConnectionHandler;
 pub use fetch_strategy::{FetchStrategy, TokenError, TokenSuccess};
-pub use lock_around::FetchBehavior;
+pub use lock_around::LockBehavior;
