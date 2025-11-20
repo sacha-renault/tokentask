@@ -137,12 +137,13 @@ where
                 *guard = Some(token);
                 duration
             }
+
             Err(TokenError {
                 error_message,
                 retry_after: duration,
             }) => {
                 drop(guard);
-                tracing::warn!("Token refresh failed: {:?}", error_message);
+                tracing::warn!("Token refresh failed: {:#?}", error_message);
                 duration
             }
         };

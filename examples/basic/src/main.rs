@@ -33,7 +33,7 @@ fn main() {
     let credentials = OAuthCredentialsConfig::builder()
         .client_id("123".into())
         .client_secret("123".into())
-        .token_uri("http://localhost.com".into())
+        .token_uri("http://localhost:8080/default/token".into())
         .unwrap()
         .build();
 
@@ -43,7 +43,8 @@ fn main() {
 
     let token = handler.call_some_api(2);
     println!("Token: {token:?}");
-    std::thread::sleep(std::time::Duration::from_secs(31));
+
+    std::thread::sleep(std::time::Duration::from_secs(500));
     let token = handler.call_some_api(3);
     println!("Token: {token:?}");
 }
