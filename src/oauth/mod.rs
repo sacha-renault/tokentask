@@ -139,7 +139,7 @@ impl FetchStrategy for OAuthStrategy {
                     let overlap = overlap
                         .min(Duration::from_secs(300))
                         .max(Duration::from_secs(5));
-                    exp.saturating_sub(overlap) // Not supposed to overlap since overlap =< 0.1 * exp but just feels more safe so i like it
+                    exp.saturating_sub(overlap) // Not supposed to saturate since overlap =< 0.1 * exp but just feels more safe so i like it
                 } else {
                     config.default_wait
                 };
